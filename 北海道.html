@@ -1,0 +1,524 @@
+<!DOCTYPE html>
+<html lang="zh-Hant">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>北海道七天六夜互動行程儀表板</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;700&family=Noto+Sans+TC:wght@400;500;700&display=swap" rel="stylesheet">
+    <!-- Chosen Palette: Calm Harmony -->
+    <!-- Application Structure Plan: The application is designed as an interactive dashboard with three main views: "行程總覽" (Itinerary Overview), "興趣探索" (Interest Explorer), and "交通資訊" (Transport Hub). This structure was chosen to transform the static report into a dynamic planning tool. The "行程總覽" provides a chronological, expandable view of the trip. The "興趣探索" allows thematic exploration based on the user's stated interests (anime, tech, nature), which is a significant usability improvement over a linear document. The "交通資訊" centralizes critical transport links. This multi-view architecture allows users to approach their plan from different angles (by day or by interest), making the information more accessible and easier to synthesize. -->
+    <!-- Visualization & Content Choices: 
+        - Itinerary Overview: Report Info -> Daily schedule. Goal -> Organize. Viz -> Interactive expandable cards for each day. Interaction -> Click to expand/collapse. Justification -> Prevents information overload, allows focus on one day at a time. Method -> HTML/CSS/JS.
+        - Transportation Options: Report Info -> Public transport vs. Taxi. Goal -> Compare. Viz -> Toggle buttons. Interaction -> Click to switch content. Justification -> Clear, direct comparison of alternatives. Method -> HTML/CSS/JS.
+        - Interest Locations: Report Info -> Categorized recommendations. Goal -> Explore. Viz -> Filterable list of location cards. Interaction -> Click filter buttons to re-render the list. Justification -> Creates a personalized discovery tool aligned with user hobbies. Method -> HTML/CSS/JS.
+        - Travel Time Analysis: Report Info -> Travel times for various legs. Goal -> Inform/Compare. Viz -> Bar Chart. Interaction -> Hover for tooltips showing daily travel time. Justification -> Provides a quick visual summary of which days involve more travel. Library -> Chart.js on Canvas.
+        - CONFIRMATION: NO SVG graphics used. NO Mermaid JS used. -->
+    <style>
+        body {
+            font-family: 'Inter', 'Noto Sans TC', sans-serif;
+            background-color: #fdfcf9;
+        }
+        .chart-container {
+            position: relative;
+            width: 100%;
+            max-width: 800px;
+            margin-left: auto;
+            margin-right: auto;
+            height: 300px;
+            max-height: 400px;
+        }
+        @media (min-width: 768px) {
+            .chart-container {
+                height: 400px;
+            }
+        }
+        .nav-btn-active {
+            background-color: #0d9488;
+            color: white;
+        }
+        .day-card {
+            transition: all 0.3s ease-in-out;
+            border-left-width: 4px;
+        }
+        .day-card-content {
+            max-height: 0;
+            overflow: hidden;
+            transition: max-height 0.5s ease-in-out, padding 0.5s ease-in-out;
+        }
+        .day-card.open .day-card-content {
+            max-height: 4000px;
+        }
+        .transport-toggle-active {
+            background-color: #14b8a6;
+            color: white;
+            border-color: #14b8a6;
+        }
+    </style>
+</head>
+<body class="text-stone-800">
+
+    <div class="min-h-screen">
+        <header class="bg-white shadow-sm sticky top-0 z-10">
+            <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-4">
+                <div class="flex flex-col sm:flex-row justify-between items-center">
+                    <div>
+                        <h1 class="text-2xl font-bold text-teal-800">北海道七天六夜互動行程</h1>
+                        <p class="text-sm text-stone-500 mt-1">您的個人化札幌及周邊旅遊計畫</p>
+                    </div>
+                    <nav id="main-nav" class="flex space-x-2 sm:space-x-4 mt-4 sm:mt-0 bg-stone-100 p-1 rounded-full">
+                        <button data-view="overview" class="nav-btn px-4 py-2 text-sm font-medium rounded-full transition-colors duration-200 nav-btn-active">行程總覽</button>
+                        <button data-view="interests" class="nav-btn px-4 py-2 text-sm font-medium rounded-full transition-colors duration-200">興趣探索</button>
+                        <button data-view="transport" class="nav-btn px-4 py-2 text-sm font-medium rounded-full transition-colors duration-200">交通資訊</button>
+                    </nav>
+                </div>
+            </div>
+        </header>
+
+        <main class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
+            
+            <div id="overview-section" class="view-section">
+                <div class="bg-white p-6 rounded-2xl shadow-lg mb-8 border border-stone-200">
+                    <h2 class="text-xl font-bold mb-4 text-teal-700">每日旅行時間分析</h2>
+                    <p class="text-sm text-stone-600 mb-4">這張圖表顯示了每日預估的交通時間，幫助您快速了解哪些天的行程會比較緊湊，交通時間較長。將滑鼠懸停在長條上可以查看詳細的交通工具和時間分配。</p>
+                    <div class="chart-container">
+                        <canvas id="travelTimeChart"></canvas>
+                    </div>
+                </div>
+                <div id="itinerary-container" class="space-y-4">
+                </div>
+            </div>
+
+            <div id="interests-section" class="view-section hidden">
+                <div class="bg-white p-6 rounded-2xl shadow-lg mb-8 border border-stone-200">
+                    <h2 class="text-xl font-bold mb-2 text-teal-700">興趣探索</h2>
+                    <p class="text-sm text-stone-600 mb-4">根據您的喜好，我們整理了所有相關景點。點擊下方的按鈕來篩選您感興趣的類別，快速找到想去的地方！</p>
+                    <div id="interest-filters" class="flex flex-wrap gap-2">
+                        <button data-filter="all" class="interest-filter-btn bg-teal-600 text-white px-4 py-2 text-sm font-medium rounded-full">全部顯示</button>
+                        <button data-filter="自然美景" class="interest-filter-btn bg-white text-teal-700 border border-teal-200 px-4 py-2 text-sm font-medium rounded-full hover:bg-teal-50 transition">🏞️ 自然美景</button>
+                        <button data-filter="動漫電玩" class="interest-filter-btn bg-white text-teal-700 border border-teal-200 px-4 py-2 text-sm font-medium rounded-full hover:bg-teal-50 transition">🎮 動漫電玩</button>
+                        <button data-filter="3C產品" class="interest-filter-btn bg-white text-teal-700 border border-teal-200 px-4 py-2 text-sm font-medium rounded-full hover:bg-teal-50 transition">💻 3C產品</button>
+                        <button data-filter="美食市場" class="interest-filter-btn bg-white text-teal-700 border border-teal-200 px-4 py-2 text-sm font-medium rounded-full hover:bg-teal-50 transition">🍣 美食市場</button>
+                        <button data-filter="購物" class="interest-filter-btn bg-white text-teal-700 border border-teal-200 px-4 py-2 text-sm font-medium rounded-full hover:bg-teal-50 transition">🛍️ 購物</button>
+                    </div>
+                </div>
+                <div id="interest-locations-container" class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+                </div>
+            </div>
+
+            <div id="transport-section" class="view-section hidden">
+                 <div class="bg-white p-6 rounded-2xl shadow-lg border border-stone-200">
+                    <h2 class="text-xl font-bold mb-4 text-teal-700">主要交通資訊站</h2>
+                    <p class="text-sm text-stone-600 mb-6">在北海道自由行，掌握即時交通資訊非常重要。這裡匯總了本次行程中最關鍵的交通營運商官方網站，建議您在出發前或旅途中隨時查閱，以獲取最新的列車、巴士時刻與運行狀況。</p>
+                    <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+                        <a href="https://www.jrhokkaido.co.jp/" target="_blank" class="block p-4 bg-teal-50 rounded-lg hover:bg-teal-100 transition-colors duration-200">
+                            <h3 class="font-semibold text-teal-800">JR北海道</h3>
+                            <p class="text-sm text-stone-600 mt-1">查詢火車時刻、票價及JR Pass相關資訊。</p>
+                        </a>
+                        <a href="https://www.city.sapporo.jp/st/" target="_blank" class="block p-4 bg-teal-50 rounded-lg hover:bg-teal-100 transition-colors duration-200">
+                            <h3 class="font-semibold text-teal-800">札幌市交通局</h3>
+                            <p class="text-sm text-stone-600 mt-1">查詢地鐵、市電（路面電車）的路線與營運資訊。</p>
+                        </a>
+                        <a href="https://www.chuo-bus.co.jp/" target="_blank" class="block p-4 bg-teal-50 rounded-lg hover:bg-teal-100 transition-colors duration-200">
+                            <h3 class="font-semibold text-teal-800">北海道中央巴士</h3>
+                            <p class="text-sm text-stone-600 mt-1">查詢前往郊區景點（如羊之丘、支笏湖）的巴士路線與時刻表。</p>
+                        </a>
+                        <a href="https://www.jotetsu.co.jp/" target="_blank" class="block p-4 bg-teal-50 rounded-lg hover:bg-teal-100 transition-colors duration-200">
+                            <h3 class="font-semibold text-teal-800">じょうてつ巴士 (Jotetsu Bus)</h3>
+                            <p class="text-sm text-stone-600 mt-1">主要營運定山溪溫泉線路，可查詢預約制的河童號資訊。</p>
+                        </a>
+                    </div>
+                </div>
+            </div>
+        </main>
+    </div>
+
+    <script>
+        const itineraryData = [
+            {
+                day: 1,
+                title: "抵達札幌與市區漫步",
+                themeColor: "border-sky-500",
+                travelTime: { total: 82, breakdown: { "JR": 40, "地鐵": 5, "步行": 37 } },
+                activities: [
+                    {
+                        time: "上午",
+                        title: "抵達新千歲機場 & 前往酒店",
+                        description: "搭乘JR快速Airport號約37-40分鐘直達JR札幌車站。從車站步行約10分鐘或利用地下通道前往北海道札幌格蘭大酒店。",
+                        transport: {
+                            public: { icon: "🚆", details: "JR快速Airport號 (約40分鐘) → 步行 (約10分鐘)" },
+                            taxi: { icon: "🚕", details: "機場巴士直達酒店 (約80-100分鐘, ¥1,300) 或 計程車 (費用高昂)" }
+                        }
+                    },
+                    {
+                        time: "中午",
+                        title: "二條市場午餐",
+                        description: "品嚐新鮮的海產。",
+                        transport: {
+                            public: { icon: "🚶", details: "從酒店步行至地鐵大通站 (約5分鐘)，搭乘地鐵南北線至「大通站」，再步行約7分鐘。" },
+                            taxi: { icon: "🚕", details: "從酒店搭乘計程車約5-10分鐘。" }
+                        }
+                    },
+                    {
+                        time: "下午",
+                        title: "中島公園散步",
+                        description: "享受市區綠洲的寧靜時光。",
+                        transport: {
+                            public: { icon: "🚇", details: "從二條市場步行至地鐵大通站，搭乘地鐵南北線至「中島公園站」下車即達。" },
+                            taxi: { icon: "🚕", details: "從二條市場搭乘計程車約10分鐘。" }
+                        }
+                    }
+                ]
+            },
+            {
+                day: 2,
+                title: "札幌神宮與自然風光",
+                themeColor: "border-emerald-500",
+                travelTime: { total: 40, breakdown: { "地鐵": 10, "巴士": 5, "步行": 25 } },
+                activities: [
+                    {
+                        time: "上午",
+                        title: "北海道神宮參拜",
+                        description: "感受莊嚴氛圍。",
+                        transport: {
+                            public: { icon: "🚇", details: "從酒店步行至地鐵大通站，搭乘東西線至「圓山公園站」。出站後穿越圓山公園步行約15分鐘。或轉乘JR北海道巴士「円14、円15號」約5分鐘至「神宮前」站。" },
+                            taxi: { icon: "🚕", details: "從酒店搭乘計程車約15-20分鐘。" }
+                        }
+                    },
+                    {
+                        time: "下午",
+                        title: "円山公園漫步",
+                        description: "欣賞四季自然景色。",
+                        transport: {
+                            public: { icon: "🚶", details: "與北海道神宮相鄰，步行即可抵達。" },
+                            taxi: { icon: "🚕", details: "公園範圍廣大，可在公園不同入口間短程移動。" }
+                        }
+                    }
+                ]
+            },
+            {
+                day: 3,
+                title: "積丹半島一日遊 (神威岬)",
+                themeColor: "border-blue-500",
+                travelTime: { total: 360, breakdown: { "JR": 90, "巴士": 250, "步行": 20 } },
+                activities: [
+                    {
+                        time: "全日",
+                        title: "神威岬 & 積丹藍海景",
+                        description: "交通較複雜且耗時，建議提早出發。可品嚐夏季限定(6-8月)的生海膽丼。",
+                        transport: {
+                            public: { icon: "🚌", details: "JR札幌→JR小樽 (約45分) → 中央巴士→積丹美國 (約80分) → **[需預約]** 積丹町生活交通巴士→神威岬 (約65分)。回程亦然。" },
+                            taxi: { icon: "🚕", details: "從JR小樽車站直接搭乘計程車前往，費用高昂但省時。或搭巴士到「積丹美國」後再轉乘計程車。" }
+                        },
+                        note: "前往神威岬的巴士需在前一天下午5點前電話預約 (0135-44-3830)。"
+                    }
+                ]
+            },
+            {
+                day: 4,
+                title: "市場巡禮與自由活動",
+                themeColor: "border-amber-500",
+                travelTime: { total: 60, breakdown: { "地鐵": 30, "步行": 30 } },
+                activities: [
+                    {
+                        time: "上午",
+                        title: "札幌場外市場早餐",
+                        description: "享用最新鮮的海鮮。",
+                        transport: {
+                            public: { icon: "🚇", details: "搭乘地鐵東西線至「二十四軒站」，步行約7-10分鐘。或搭JR至「桑園站」，步行約9-13分鐘。" },
+                            taxi: { icon: "🚕", details: "從酒店搭乘計程車約15分鐘。" }
+                        }
+                    },
+                    {
+                        time: "下午",
+                        title: "市區自由活動 (個人化推薦)",
+                        description: "可探索動漫、3C或購物景點。",
+                        transport: {
+                            public: { icon: "🚶", details: "多數推薦點位於大通或札幌車站周邊，可從酒店步行或搭乘地鐵輕鬆抵達。" },
+                            taxi: { icon: "🚕", details: "在市中心各點之間短程移動很方便。" }
+                        }
+                    }
+                ]
+            },
+            {
+                day: 5,
+                title: "札幌兩大展望台",
+                themeColor: "border-indigo-500",
+                travelTime: { total: 90, breakdown: { "地鐵": 20, "巴士": 30, "市電": 20, "步行": 20 } },
+                activities: [
+                    {
+                        time: "上午",
+                        title: "宮之森大倉山展望台",
+                        description: "感受跳台滑雪的震撼。",
+                        transport: {
+                            public: { icon: "🚌", details: "地鐵東西線至「圓山公園站」，轉乘JR北海道巴士「くらまる」號約15分鐘。" },
+                            taxi: { icon: "🚕", details: "從酒店搭乘計程車約20-25分鐘。" }
+                        }
+                    },
+                    {
+                        time: "傍晚",
+                        title: "藻岩山夜景",
+                        description: "欣賞日本新三大夜景。",
+                        transport: {
+                            public: { icon: "🚠", details: "搭乘市電至「纜車入口」站，轉乘免費接駁巴士或步行7分鐘。或從圓山公園站搭乘巴士「循環圓11號」。" },
+                            taxi: { icon: "🚕", details: "從酒店或大倉山直接搭乘計程車至纜車站，方便快捷。" }
+                        },
+                        note: "夜景熱門，建議提早前往。纜車票價成人¥2,100。"
+                    }
+                ]
+            },
+            {
+                day: 6,
+                title: "開拓精神與可愛羊群",
+                themeColor: "border-lime-500",
+                travelTime: { total: 60, breakdown: { "地鐵": 20, "巴士": 20, "步行": 20 } },
+                activities: [
+                    {
+                        time: "上午",
+                        title: "札幌羊之丘展望台",
+                        description: "與牧羊群和克拉克博士雕像合影。",
+                        transport: {
+                            public: { icon: "🚌", details: "地鐵東豐線至「福住站」，轉乘中央巴士「福84號」至終點站。" },
+                            taxi: { icon: "🚕", details: "從酒店搭乘計程車約25-30分鐘。" }
+                        }
+                    },
+                    {
+                        time: "下午",
+                        title: "札幌車站周邊自由活動",
+                        description: "購物或探索推薦的遊戲中心。",
+                        transport: {
+                            public: { icon: "🚶", details: "從羊之丘搭巴士和地鐵返回札幌車站，周邊商場均可步行抵達。" },
+                            taxi: { icon: "🚕", details: "在市中心各點之間短程移動很方便。" }
+                        }
+                    }
+                ]
+            },
+            {
+                day: 7,
+                title: "支笏湖美景與啟程返家",
+                themeColor: "border-rose-500",
+                travelTime: { total: 100, breakdown: { "巴士": 45, "JR": 40, "步行": 15 } },
+                activities: [
+                    {
+                        time: "上午",
+                        title: "支笏湖",
+                        description: "日本最北的不凍湖，以清澈湖水聞名。",
+                        transport: {
+                            public: { icon: "🚌", details: "從札幌車站搭乘JR至千歲站，再轉乘北海道中央巴士前往支笏湖溫泉 (單程約45分鐘)。" },
+                            taxi: { icon: "🚕", details: "從札幌市區搭乘計程車，車程約80分鐘，費用非常昂貴 (預估超過 ¥10,000)。" }
+                        },
+                        note: "請務必留意巴士和JR的回程時間，確保有足夠時間前往機場。"
+                    },
+                    {
+                        time: "下午",
+                        title: "前往新千歲機場",
+                        description: "從支笏湖返回後，從JR千歲站搭乘JR快速Airport號前往機場，準備搭機返家。",
+                        transport: {
+                            public: { icon: "🚆", details: "從JR千歲站搭乘JR快速Airport號前往機場。" },
+                            taxi: { icon: "🚕", details: "從千歲站或支笏湖搭乘計程車前往機場，方便但費用高。" }
+                        }
+                    }
+                ]
+            }
+        ];
+
+        const locationsData = [
+            { name: "中島公園", category: "自然美景", day: 1, description: "位於市中心的廣闊公園，四季景色分明。" },
+            { name: "北海道神宮", category: "自然美景", day: 2, description: "札幌最重要的神社，被大片森林環繞。" },
+            { name: "円山公園", category: "自然美景", day: 2, description: "鄰近神宮，是賞櫻名所，也有動物園。" },
+            { name: "神威岬", category: "自然美景", day: 3, description: "以「積丹藍」絕景聞名，景色壯麗。" },
+            { name: "宮之森大倉山展望台", category: "自然美景", day: 5, description: "可俯瞰札幌市景並感受冬季運動的魅力。" },
+            { name: "藻岩山", category: "自然美景", day: 5, description: "欣賞被譽為日本新三大夜景之一的札幌夜景。" },
+            { name: "札幌羊之丘展望台", category: "自然美景", day: 6, description: "田園風光，可見羊群悠閒吃草。" },
+            { name: "支笏湖", category: "自然美景", day: 7, description: "日本最北的不凍湖，水質極為清澈。" },
+            { name: "二條市場", category: "美食市場", day: 1, description: "歷史悠久的市場，可品嚐新鮮海產丼飯。" },
+            { name: "札幌場外市場", category: "美食市場", day: 4, description: "規模較大的海鮮市場，選擇更多元。" },
+            { name: "animate札幌", category: "動漫電玩", day: 4, description: "北海道最大的動漫周邊商品店。" },
+            { name: "札幌PARCO (JUMP SHOP)", category: "動漫電玩", day: 4, description: "集結JUMP系動漫周邊的專賣店。" },
+            { name: "namco 東急百貨店", category: "動漫電玩", day: 6, description: "位於車站旁百貨內的遊戲中心，扭蛋種類豐富。" },
+            { name: "namco 札幌工廠店", category: "動漫電玩", day: 6, description: "空間寬敞的遊戲中心，適合各年齡層。" },
+            { name: "Bic Camera札幌店", category: "3C產品", day: 4, description: "大型電器量販店，商品種類齊全。" },
+            { name: "Yodobashi Camera", category: "3C產品", day: 4, description: "另一家大型電器量販店，可互相比較價格。" },
+            { name: "札幌車站周邊商場", category: "購物", day: 6, description: "大丸百貨、JR Tower等，購物選擇多。" },
+        ];
+
+        document.addEventListener('DOMContentLoaded', () => {
+            const itineraryContainer = document.getElementById('itinerary-container');
+            const interestLocationsContainer = document.getElementById('interest-locations-container');
+            const mainNav = document.getElementById('main-nav');
+            const viewSections = document.querySelectorAll('.view-section');
+            const interestFilters = document.getElementById('interest-filters');
+
+            function renderItinerary() {
+                itineraryContainer.innerHTML = itineraryData.map(day => `
+                    <div class="day-card bg-white rounded-2xl shadow-md border-l-4 ${day.themeColor} overflow-hidden cursor-pointer" data-day="${day.day}">
+                        <div class="p-4 sm:p-6 flex justify-between items-center">
+                            <div>
+                                <p class="text-sm font-semibold text-teal-600">第 ${day.day} 天</p>
+                                <h3 class="text-lg font-bold mt-1">${day.title}</h3>
+                            </div>
+                            <div class="text-2xl text-stone-400 transform transition-transform duration-300">
+                                <span>▼</span>
+                            </div>
+                        </div>
+                        <div class="day-card-content">
+                            <div class="px-4 sm:px-6 pb-6 pt-2 border-t border-stone-100">
+                                ${day.activities.map(activity => `
+                                    <div class="mt-4">
+                                        <h4 class="font-bold text-md text-teal-700">${activity.title}</h4>
+                                        <p class="text-sm text-stone-600 mt-1">${activity.description}</p>
+                                        <div class="mt-3 bg-stone-50 p-3 rounded-lg">
+                                            <div class="transport-toggles mb-2 flex border border-stone-200 rounded-md text-xs w-full sm:w-auto">
+                                                <button class="transport-toggle transport-toggle-active flex-1 py-1 px-3" data-day="${day.day}" data-activity-title="${activity.title}" data-type="public">🚌 公共運輸</button>
+                                                <button class="transport-toggle flex-1 py-1 px-3" data-day="${day.day}" data-activity-title="${activity.title}" data-type="taxi">🚕 計程車</button>
+                                            </div>
+                                            <div class="transport-details text-sm text-stone-700">
+                                                <span class="font-mono">${activity.transport.public.icon}</span> ${activity.transport.public.details}
+                                            </div>
+                                        </div>
+                                        ${activity.note ? `<p class="text-xs text-rose-600 mt-2 bg-rose-50 p-2 rounded-md">⚠️ **注意:** ${activity.note}</p>` : ''}
+                                    </div>
+                                `).join('')}
+                            </div>
+                        </div>
+                    </div>
+                `).join('');
+            }
+
+            function renderInterestLocations(filter = 'all') {
+                const filteredLocations = filter === 'all' 
+                    ? locationsData 
+                    : locationsData.filter(loc => loc.category === filter);
+
+                interestLocationsContainer.innerHTML = filteredLocations.map(loc => `
+                    <div class="bg-white rounded-2xl shadow-md p-6 border border-stone-200 hover:shadow-xl hover:-translate-y-1 transition-all duration-300">
+                        <h3 class="font-bold text-lg text-teal-800">${loc.name}</h3>
+                        <p class="text-sm text-stone-500 mt-1">Day ${loc.day} | ${loc.category}</p>
+                        <p class="text-sm text-stone-600 mt-3">${loc.description}</p>
+                    </div>
+                `).join('');
+            }
+
+            function handleViewChange(view) {
+                viewSections.forEach(section => section.classList.add('hidden'));
+                document.getElementById(`${view}-section`).classList.remove('hidden');
+
+                document.querySelectorAll('.nav-btn').forEach(btn => btn.classList.remove('nav-btn-active'));
+                document.querySelector(`.nav-btn[data-view="${view}"]`).classList.add('nav-btn-active');
+            }
+
+            itineraryContainer.addEventListener('click', (e) => {
+                const dayCard = e.target.closest('.day-card');
+                if (dayCard) {
+                    dayCard.classList.toggle('open');
+                    const arrow = dayCard.querySelector('.text-2xl span');
+                    arrow.style.transform = dayCard.classList.contains('open') ? 'rotate(180deg)' : 'rotate(0deg)';
+                }
+
+                const toggleBtn = e.target.closest('.transport-toggle');
+                if (toggleBtn) {
+                    const { day, activityTitle, type } = toggleBtn.dataset;
+                    const activity = itineraryData.find(d => d.day == day).activities.find(a => a.title === activityTitle);
+                    
+                    const parentToggles = toggleBtn.parentElement;
+                    parentToggles.querySelectorAll('.transport-toggle').forEach(btn => btn.classList.remove('transport-toggle-active'));
+                    toggleBtn.classList.add('transport-toggle-active');
+
+                    const detailsDiv = parentToggles.nextElementSibling;
+                    detailsDiv.innerHTML = `<span class="font-mono">${activity.transport[type].icon}</span> ${activity.transport[type].details}`;
+                }
+            });
+            
+            mainNav.addEventListener('click', (e) => {
+                if (e.target.matches('.nav-btn')) {
+                    handleViewChange(e.target.dataset.view);
+                }
+            });
+
+            interestFilters.addEventListener('click', (e) => {
+                if(e.target.matches('.interest-filter-btn')) {
+                    const filter = e.target.dataset.filter;
+                    renderInterestLocations(filter);
+                    document.querySelectorAll('.interest-filter-btn').forEach(btn => {
+                        btn.classList.remove('bg-teal-600', 'text-white');
+                        btn.classList.add('bg-white', 'text-teal-700', 'border-teal-200');
+                    });
+                    e.target.classList.add('bg-teal-600', 'text-white');
+                    e.target.classList.remove('bg-white', 'text-teal-700', 'border-teal-200');
+                }
+            });
+
+            function renderChart() {
+                const ctx = document.getElementById('travelTimeChart').getContext('2d');
+                const labels = itineraryData.map(d => `第 ${d.day} 天`);
+                const data = itineraryData.map(d => d.travelTime.total);
+                
+                new Chart(ctx, {
+                    type: 'bar',
+                    data: {
+                        labels: labels,
+                        datasets: [{
+                            label: '每日總交通時間 (分鐘)',
+                            data: data,
+                            backgroundColor: 'rgba(20, 184, 166, 0.6)',
+                            borderColor: 'rgba(13, 148, 136, 1)',
+                            borderWidth: 1,
+                            borderRadius: 8,
+                        }]
+                    },
+                    options: {
+                        responsive: true,
+                        maintainAspectRatio: false,
+                        scales: {
+                            y: {
+                                beginAtZero: true,
+                                title: {
+                                    display: true,
+                                    text: '時間 (分鐘)'
+                                }
+                            }
+                        },
+                        plugins: {
+                            legend: {
+                                display: false
+                            },
+                            tooltip: {
+                                callbacks: {
+                                    label: function(context) {
+                                        let label = context.dataset.label || '';
+                                        if (label) {
+                                            label += ': ';
+                                        }
+                                        if (context.parsed.y !== null) {
+                                            label += context.parsed.y + ' 分鐘';
+                                        }
+                                        return label;
+                                    },
+                                    afterLabel: function(context) {
+                                        const dayData = itineraryData[context.dataIndex];
+                                        const breakdown = dayData.travelTime.breakdown;
+                                        let breakdownString = '\n時間分配:';
+                                        for (const [key, value] of Object.entries(breakdown)) {
+                                            if (value > 0) {
+                                               breakdownString += `\n- ${key}: ${value}分`;
+                                            }
+                                        }
+                                        return breakdownString;
+                                    }
+                                }
+                            }
+                        }
+                    }
+                });
+            }
+
+            renderItinerary();
+            renderInterestLocations();
+            renderChart();
+        });
+    </script>
+</body>
+</html>
